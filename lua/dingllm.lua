@@ -61,7 +61,12 @@ function M.make_anthropic_spec_curl_args(opts, prompt, system_prompt)
     stream = true,
     max_tokens = 4096,
   }
-  local args = { '-N', '-X', 'POST', '-H', 'Content-Type: application/json', '-d', vim.json.encode(data) }
+  local args = {
+    '-s', '--fail-with-body', '-N', --silent, with errors, unbuffered output
+    '-X', 'POST',
+    '-H', 'Content-Type: application/json',
+    '-d', vim.json.encode(data)
+  }
   if api_key then
     table.insert(args, '-H')
     table.insert(args, 'x-api-key: ' .. api_key)
@@ -81,7 +86,12 @@ function M.make_openai_spec_curl_args(opts, prompt, system_prompt)
     temperature = 0.7,
     stream = true,
   }
-  local args = { '-N', '-X', 'POST', '-H', 'Content-Type: application/json', '-d', vim.json.encode(data) }
+  local args = {
+    '-s', '--fail-with-body', '-N', --silent, with errors, unbuffered output
+    '-X', 'POST',
+    '-H', 'Content-Type: application/json',
+    '-d', vim.json.encode(data)
+  }
   if api_key then
     table.insert(args, '-H')
     table.insert(args, 'Authorization: Bearer ' .. api_key)
