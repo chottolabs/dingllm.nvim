@@ -142,6 +142,7 @@ function M.handle_anthropic_spec_data(data_stream)
     elseif event == 'content_block_stop' then
     elseif event == 'message_start' then
       vim.print(data)
+    elseif event == 'message_stop' then
     elseif event == 'message_delta' then
     elseif event == 'ping' then
     elseif event == 'error' then
