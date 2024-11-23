@@ -1,4 +1,5 @@
 local M = {}
+local ns_id = vim.api.nvim_create_namespace 'dingllm'
 
 local function get_api_key(name)
   return os.getenv(name)
@@ -89,20 +90,14 @@ function M.make_openai_spec_curl_args(opts, prompt, system_prompt)
   return args
 end
 
-function M.write_string_at_cursor(str)
+function M.write_string_at_extmark(str, extmark_id)
   vim.schedule(function()
-    local current_window = vim.api.nvim_get_current_win()
-    local cursor_position = vim.api.nvim_win_get_cursor(current_window)
-    local row, col = cursor_position[1], cursor_position[2]
-
-    local lines = vim.split(str, '\n')
+    local extmark = vim.api.nvim_buf_get_extmark_by_id(0, ns_id, extmark_id, { details = false })
+    local row, col = extmark[1], extmark[2]
 
     vim.cmd("undojoin")
-    vim.api.nvim_put(lines, 'c', true, true)
-
-    local num_lines = #lines
-    local last_line_length = #lines[num_lines]
-    vim.api.nvim_win_set_cursor(current_window, { row + num_lines - 1, col + last_line_length })
+    local lines = vim.split(str, '\n')
+    vim.api.nvim_buf_set_text(0, row, col, row, col, lines)
   end)
 end
 
@@ -114,8 +109,7 @@ local function get_prompt(opts)
   if visual_lines then
     prompt = table.concat(visual_lines, '\n')
     if replace then
-      vim.api.nvim_command 'normal! d'
-      vim.api.nvim_command 'normal! k'
+      vim.api.nvim_command 'normal! c'
     else
       vim.api.nvim_feedkeys(vim.api.nvim_replace_termcodes('<Esc>', false, true, true), 'nx', false)
     end
@@ -146,8 +140,7 @@ function M.handle_anthropic_spec_data(data_stream)
       vim.print(data)
     end
   end
-
-  M.write_string_at_cursor(content)
+  return content
 end
 
 function M.handle_openai_spec_data(data_stream)
@@ -165,7 +158,7 @@ function M.handle_openai_spec_data(data_stream)
     end
   end
 
-  M.write_string_at_cursor(content)
+  return content
 end
 
 local group = vim.api.nvim_create_augroup('DING_LLM_AutoGroup', { clear = true })
@@ -184,6 +177,9 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
   local system_prompt = opts.system_prompt or 'You are a tsundere uwu anime. Yell at me for not setting my configuration for my llm plugin correctly'
   local args = make_curl_args_fn(opts, prompt, system_prompt)
 
+  local crow, _ = unpack(vim.api.nvim_win_get_cursor(0))
+  local stream_end_extmark_id = vim.api.nvim_buf_set_extmark(0, ns_id, crow - 1, -1, {})
+
   if active_job then
     active_job:kill(9)
     active_job = nil
@@ -200,7 +196,8 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
         end
 
         captured_stdout = data
-        handle_data_fn(data)
+        local content = handle_data_fn(data)
+        M.write_string_at_extmark(content, stream_end_extmark_id)
       end,
     },
     function(obj)
