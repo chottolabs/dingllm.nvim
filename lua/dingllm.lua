@@ -1,5 +1,4 @@
 local M = {}
-local Job = require 'plenary.job'
 
 local function get_api_key(name)
   return os.getenv(name)
@@ -127,28 +126,56 @@ local function get_prompt(opts)
   return prompt
 end
 
-function M.handle_anthropic_spec_data(data_stream, event_state)
-  if event_state == 'content_block_delta' then
-    local json = vim.json.decode(data_stream)
-    if json.delta and json.delta.text then
-      M.write_string_at_cursor(json.delta.text)
+function M.handle_anthropic_spec_data(data_stream)
+  local content = ''
+  for event, data in data_stream:gmatch('event: ([%w_]+)\ndata: (%b{})%s+') do
+    if event == 'content_block_delta' then
+      local json = vim.json.decode(data)
+      if json.delta and json.delta.text then
+        content = content .. json.delta.text
+      end
+    elseif event == 'content_block_start' then
+    elseif event == 'content_block_stop' then
+    elseif event == 'message_start' then
+      vim.print(data)
+    elseif event == 'message_delta' then
+    elseif event == 'ping' then
+    elseif event == 'error' then
+      vim.print(data)
+    else
+      vim.print(data)
     end
   end
+
+  M.write_string_at_cursor(content)
 end
 
 function M.handle_openai_spec_data(data_stream)
-  if data_stream:match '"delta":' then
-    local json = vim.json.decode(data_stream)
-    if json.choices and json.choices[1] and json.choices[1].delta then
-      local content = json.choices[1].delta.content
-      if content then
-        M.write_string_at_cursor(content)
+  local content = ''
+
+  for data in data_stream:gmatch('data: (%b{})%s+') do
+    if data and data:match '"delta":' then
+      local json = vim.json.decode(data)
+      -- sglang server returns the role as one of the events and it becomes `vim.NIL`, so we have to handle it here
+      if json.choices and json.choices[1] and json.choices[1].delta and json.choices[1].delta.content and json.choices[1].delta.content ~= vim.NIL then
+        content = content .. json.choices[1].delta.content
+      else
+        vim.print(data)
       end
     end
   end
+
+  M.write_string_at_cursor(content)
 end
 
 local group = vim.api.nvim_create_augroup('DING_LLM_AutoGroup', { clear = true })
+
+--- Makes a no-op change to the buffer
+--- This is used before making changes to avoid calling undojoin after undo.
+local function noop()
+  vim.api.nvim_buf_set_text(0, 0, 0, 0, 0, {})
+end
+
 local active_job = nil
 
 function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_data_fn)
@@ -156,45 +183,44 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
   local prompt = get_prompt(opts)
   local system_prompt = opts.system_prompt or 'You are a tsundere uwu anime. Yell at me for not setting my configuration for my llm plugin correctly'
   local args = make_curl_args_fn(opts, prompt, system_prompt)
-  local curr_event_state = nil
-
-  local function parse_and_call(line)
-    local event = line:match '^event: (.+)$'
-    if event then
-      curr_event_state = event
-      return
-    end
-    local data_match = line:match '^data: (.+)$'
-    if data_match then
-      handle_data_fn(data_match, curr_event_state)
-    end
-  end
 
   if active_job then
-    active_job:shutdown()
+    active_job:kill(9)
     active_job = nil
   end
 
-  active_job = Job:new {
-    command = 'curl',
-    args = args,
-    on_stdout = function(_, out)
-      parse_and_call(out)
-    end,
-    on_stderr = function(_, _) end,
-    on_exit = function()
-      active_job = nil
-    end,
-  }
+  noop()
+  local captured_stdout
+  active_job = vim.system(
+    vim.list_extend({ 'curl' }, args),
+    {
+      stdout = function(err, data)
+        if data == nil then
+          return
+        end
 
-  active_job:start()
+        captured_stdout = data
+        handle_data_fn(data)
+      end,
+    },
+    function(obj)
+      vim.schedule(function()
+        if obj.code and obj.code ~= 0 then
+          vim.notify(
+            ('[curl] (exit code: %d) %s'):format(obj.code, captured_stdout),
+            vim.log.levels.ERROR
+          )
+        end
+      end)
+    end
+  )
 
   vim.api.nvim_create_autocmd('User', {
     group = group,
     pattern = 'DING_LLM_Escape',
     callback = function()
       if active_job then
-        active_job:shutdown()
+        active_job:kill(9)
         print 'LLM streaming cancelled'
         active_job = nil
       end
