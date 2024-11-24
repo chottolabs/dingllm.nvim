@@ -132,7 +132,7 @@ end
 
 function M.handle_anthropic_spec_data(data_stream)
   local content = ''
-  for event, data in data_stream:gmatch('event: ([%w_]+)\ndata: (%b{})%s+') do
+  for event, data in data_stream:gmatch('event: ([%w_]+)\ndata: ({.-})\n') do
     if event == 'content_block_delta' then
       local json = vim.json.decode(data)
       if json.delta and json.delta.text then
@@ -157,7 +157,7 @@ end
 function M.handle_openai_spec_data(data_stream)
   local content = ''
 
-  for data in data_stream:gmatch('data: (%b{})%s+') do
+  for data in data_stream:gmatch('data: ({.-})\n') do
     if data and data:match '"delta":' then
       local json = vim.json.decode(data)
       -- sglang server returns the role as one of the events and it becomes `vim.NIL`, so we have to handle it here
