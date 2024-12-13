@@ -100,14 +100,14 @@ function M.make_openai_spec_curl_args(opts, prompt, system_prompt)
   return args
 end
 
-function M.write_string_at_extmark(str, extmark_id)
+function M.write_string_at_extmark(str, buf_id, extmark_id)
   vim.schedule(function()
-    local extmark = vim.api.nvim_buf_get_extmark_by_id(0, ns_id, extmark_id, { details = false })
+    local extmark = vim.api.nvim_buf_get_extmark_by_id(buf_id, ns_id, extmark_id, { details = false })
     local row, col = extmark[1], extmark[2]
 
     vim.cmd("undojoin")
     local lines = vim.split(str, '\n')
-    vim.api.nvim_buf_set_text(0, row, col, row, col, lines)
+    vim.api.nvim_buf_set_text(buf_id, row, col, row, col, lines)
   end)
 end
 
@@ -188,8 +188,9 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
   local system_prompt = opts.system_prompt or 'You are a tsundere uwu anime. Yell at me for not setting my configuration for my llm plugin correctly'
   local args = make_curl_args_fn(opts, prompt, system_prompt)
 
+  local buf_id = vim.api.nvim_get_current_buf()
   local crow, _ = unpack(vim.api.nvim_win_get_cursor(0))
-  local stream_end_extmark_id = vim.api.nvim_buf_set_extmark(0, ns_id, crow - 1, -1, {})
+  local stream_end_extmark_id = vim.api.nvim_buf_set_extmark(buf_id, ns_id, crow - 1, -1, {})
 
   if active_job then
     active_job:kill(9)
@@ -208,7 +209,7 @@ function M.invoke_llm_and_stream_into_editor(opts, make_curl_args_fn, handle_dat
 
         captured_stdout = data
         local content = handle_data_fn(data)
-        M.write_string_at_extmark(content, stream_end_extmark_id)
+        M.write_string_at_extmark(content, buf_id, stream_end_extmark_id)
       end,
     },
     function(obj)
