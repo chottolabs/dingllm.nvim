@@ -1,3 +1,14 @@
+# dingllm.nvim fork with minimal QOL changes
+
+* remove plenary and add qol features
+* simplified parsing for stdout with consecutive lines
+* noop to allow invoke after undo
+* replace plenary job with vim.system (nvim 0.10+ required)
+* merge free cursor changes
+* propagate errors
+
+---
+
 <img src="https://github.com/yacineMTB/dingllm.nvim/assets/10282244/d03ef83d-a5ee-4ddb-928f-742172f3c80c" alt="wordart (6)" style="width:200px;height:100px;">
 
 ### dingllm.nvim
